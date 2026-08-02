@@ -1,0 +1,8 @@
+{
+	"appId": "br.com.atlasinvest.app",
+	"appName": "Atlas Invest",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	}
+}
