@@ -1,0 +1,434 @@
+// Atlas Invest - Modelo de Banco de Dados
+// Baseado nas Partes 4 (Banco de Dados), 11 (Banco de Dados Avançado)
+// e 23 (Modelo Completo do Banco de Dados)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum RiskProfile {
+  CONSERVADOR
+  MODERADO
+  ARROJADO
+}
+
+enum AssetType {
+  ACAO
+  FII
+  ETF
+  CRIPTO
+  RENDA_FIXA
+  OUTRO
+}
+
+enum TransactionType {
+  COMPRA
+  VENDA
+  APORTE
+  RETIRADA
+  AJUSTE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum SubscriptionPlan {
+  FREE
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  CANCELED
+  EXPIRED
+  PAST_DUE
+}
+
+enum AdminRole {
+  SUPORTE
+  ADMINISTRADOR
+}
+
+// ---------------------------------------------------------------------------
+// AUTENTICAÇÃO E PERFIL (Parte 4, 16)
+// ---------------------------------------------------------------------------
+
+model User {
+  id             String        @id @default(uuid()) @db.Uuid
+  email          String        @unique
+  senhaHash      String        @map("senha_hash")
+  pinHash        String?       @map("pin_hash")
+  biometriaAtiva Boolean       @default(false) @map("biometria_ativa")
+  idioma         String        @default("pt-BR")
+  status         AccountStatus @default(PENDING_VERIFICATION)
+  emailVerificadoEm DateTime?  @map("email_verificado_em")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  profile           Profile?
+  wallets           Wallet[]
+  aiConversations   AiConversation[]
+  subscriptions     Subscription[]
+  notifications     Notification[]
+  alerts            Alert[]
+  referralsOrigem   Referral[]       @relation("ReferralOrigem")
+  referralsIndicado Referral[]       @relation("ReferralIndicado")
+  refreshTokens     RefreshToken[]
+  auditLogs         AuditLog[]
+
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+model Profile {
+  userId          String       @id @map("user_id") @db.Uuid
+  nomeCompleto     String?      @map("nome_completo")
+  foto             String?
+  objetivoFinanceiro String?    @map("objetivo_financeiro")
+  rendaMensal      Decimal?     @map("renda_mensal") @db.Decimal(14, 2)
+  perfilRisco      RiskProfile? @map("perfil_risco")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// CARTEIRA E ATIVOS (Parte 4, 11, 23)
+// ---------------------------------------------------------------------------
+
+model Wallet {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  nome      String
+  moedaBase String    @default("BRL") @map("moeda_base")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletAssets WalletAsset[]
+
+  @@index([userId])
+  @@map("wallets")
+}
+
+model Asset {
+  id      String    @id @default(uuid()) @db.Uuid
+  ticker  String    @unique
+  nome    String
+  tipo    AssetType
+  mercado String?
+  moeda   String    @default("BRL")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  walletAssets WalletAsset[]
+  prices       AssetPrice[]
+  dividends    Dividend[]
+  scores       AtlasScore[]
+  alerts       Alert[]
+
+  @@index([ticker])
+  @@index([tipo])
+  @@map("assets")
+}
+
+model WalletAsset {
+  id          String   @id @default(uuid()) @db.Uuid
+  walletId    String   @map("wallet_id") @db.Uuid
+  assetId     String   @map("asset_id") @db.Uuid
+  quantidade  Decimal  @db.Decimal(20, 8)
+  precoMedio  Decimal  @map("preco_medio") @db.Decimal(20, 8)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  wallet       Wallet        @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  asset        Asset         @relation(fields: [assetId], references: [id])
+  transactions Transaction[]
+
+  @@unique([walletId, assetId])
+  @@index([walletId])
+  @@index([assetId])
+  @@map("wallet_assets")
+}
+
+model AssetPrice {
+  id        String   @id @default(uuid()) @db.Uuid
+  assetId   String   @map("asset_id") @db.Uuid
+  preco     Decimal  @db.Decimal(20, 8)
+  dataHora  DateTime @map("data_hora")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, dataHora])
+  @@map("asset_prices")
+}
+
+model Transaction {
+  id            String          @id @default(uuid()) @db.Uuid
+  walletAssetId String          @map("wallet_asset_id") @db.Uuid
+  tipo          TransactionType
+  quantidade    Decimal         @db.Decimal(20, 8)
+  preco         Decimal         @db.Decimal(20, 8)
+  data          DateTime
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  walletAsset WalletAsset @relation(fields: [walletAssetId], references: [id], onDelete: Cascade)
+
+  @@index([walletAssetId])
+  @@map("transactions")
+}
+
+model Dividend {
+  id             String   @id @default(uuid()) @db.Uuid
+  assetId        String   @map("asset_id") @db.Uuid
+  dataPagamento  DateTime @map("data_pagamento")
+  valorPorCota   Decimal  @map("valor_por_cota") @db.Decimal(20, 8)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("dividends")
+}
+
+model AtlasScore {
+  id               String   @id @default(uuid()) @db.Uuid
+  assetId          String   @map("asset_id") @db.Uuid
+  score            Decimal  @db.Decimal(5, 2)
+  fundamentos      Json?
+  ultimaAtualizacao DateTime @default(now()) @map("ultima_atualizacao")
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("atlas_scores")
+}
+
+// ---------------------------------------------------------------------------
+// IA (Parte 17, 24)
+// ---------------------------------------------------------------------------
+
+model AiConversation {
+  id       String    @id @default(uuid()) @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  titulo   String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiMessage[]
+
+  @@index([userId])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String      @id @default(uuid()) @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  papel          MessageRole
+  mensagem       String      @db.Text
+  timestamp      DateTime    @default(now())
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@map("ai_messages")
+}
+
+// ---------------------------------------------------------------------------
+// NOTÍCIAS, ALERTAS E NOTIFICAÇÕES (Parte 4, 18)
+// ---------------------------------------------------------------------------
+
+model News {
+  id           String   @id @default(uuid()) @db.Uuid
+  titulo       String
+  resumo       String   @db.Text
+  categoria    String?
+  fonteOrigem  String?  @map("fonte_origem")
+  publicadoEm  DateTime @map("publicado_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([publicadoEm])
+  @@index([categoria])
+  @@map("news")
+}
+
+model Alert {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  assetId   String?  @map("asset_id") @db.Uuid
+  tipo      String
+  condicao  Json
+  ativoFlag Boolean  @default(true) @map("ativo_flag")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset? @relation(fields: [assetId], references: [id])
+
+  @@index([userId])
+  @@map("alerts")
+}
+
+model Notification {
+  id       String   @id @default(uuid()) @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  titulo   String
+  mensagem String   @db.Text
+  lida     Boolean  @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lida])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// PREMIUM E INDICAÇÃO (Parte 4, 13, 18)
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id             String             @id @default(uuid()) @db.Uuid
+  userId         String             @map("user_id") @db.Uuid
+  plano          SubscriptionPlan   @default(FREE)
+  status         SubscriptionStatus @default(TRIALING)
+  trialUtilizado Boolean            @default(false) @map("trial_utilizado")
+  inicio         DateTime?
+  renovacao      DateTime?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model Referral {
+  id              String   @id @default(uuid()) @db.Uuid
+  usuarioOrigemId String   @map("usuario_origem_id") @db.Uuid
+  usuarioIndicadoId String @map("usuario_indicado_id") @db.Uuid
+  bonusConcedido  Boolean  @default(false) @map("bonus_concedido")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  usuarioOrigem   User @relation("ReferralOrigem", fields: [usuarioOrigemId], references: [id])
+  usuarioIndicado User @relation("ReferralIndicado", fields: [usuarioIndicadoId], references: [id])
+
+  @@unique([usuarioOrigemId, usuarioIndicadoId])
+  @@map("referrals")
+}
+
+// ---------------------------------------------------------------------------
+// AUDITORIA E ADMINISTRAÇÃO (Parte 11, 16, 23)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id     String  @id @default(uuid()) @db.Uuid
+  userId String? @map("user_id") @db.Uuid
+  acao   String
+  ip     String?
+  detalhes Json?
+
+  data DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([acao])
+  @@map("audit_logs")
+}
+
+model AdminUser {
+  id        String    @id @default(uuid()) @db.Uuid
+  email     String    @unique
+  senhaHash String    @map("senha_hash")
+  role      AdminRole @default(SUPORTE)
+  ativo     Boolean   @default(true)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("admin_users")
+}
+
+model FeatureFlag {
+  chave     String  @id
+  ativo     Boolean @default(false)
+  descricao String?
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flags")
+}
+
+model AppSetting {
+  chave String @id
+  valor Json
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}

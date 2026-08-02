@@ -1,0 +1,190 @@
+### Atlas Invest — Requisições de teste
+### Use com a extensão "REST Client" (VS Code) ou importe manualmente no Postman/Insomnia.
+### Depois de rodar `docker compose up`, a API estará em http://localhost:3000
+
+@baseUrl = http://localhost:3000/api/v1
+@userEmail = teste@atlasinvest.com.br
+@userSenha = Teste123
+@adminEmail = admin@atlasinvest.com.br
+@adminSenha = Admin123
+
+### Health check
+GET {{baseUrl}}/health
+
+### ------------------------------------------------------------------
+### AUTENTICAÇÃO
+### ------------------------------------------------------------------
+
+### Registrar novo usuário (o usuário de teste já vem pronto via seed,
+### use este apenas se quiser criar uma conta extra)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "nome": "Novo Usuário",
+  "email": "novo@exemplo.com",
+  "senha": "Senha123",
+  "aceiteTermos": true
+}
+
+### Confirmar e-mail (cole o verificationToken retornado no registro acima)
+# POST {{baseUrl}}/auth/confirm-email
+# Content-Type: application/json
+#
+# { "token": "COLE_O_TOKEN_AQUI" }
+
+### Login com o usuário de teste (já confirmado pelo seed)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{userEmail}}",
+  "senha": "{{userSenha}}"
+}
+
+### Guarde o accessToken retornado acima manualmente na variável abaixo
+@accessToken = COLE_O_ACCESS_TOKEN_AQUI
+
+### Dados do usuário autenticado
+GET {{baseUrl}}/users/me
+Authorization: Bearer {{accessToken}}
+
+### Configurar PIN
+POST {{baseUrl}}/users/me/pin
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "pin": "1234" }
+
+### Verificar PIN
+POST {{baseUrl}}/users/me/pin/verify
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "pin": "1234" }
+
+### ------------------------------------------------------------------
+### CARTEIRA
+### ------------------------------------------------------------------
+
+### Listar carteiras (a "Carteira Principal" já vem do seed com 100 PETR4)
+GET {{baseUrl}}/wallets
+Authorization: Bearer {{accessToken}}
+
+### Criar nova carteira
+POST {{baseUrl}}/wallets
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "nome": "Carteira Cripto", "moedaBase": "BRL" }
+
+### Registrar uma nova transação (compra de MXRF11)
+POST {{baseUrl}}/transactions
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "walletId": "COLE_O_ID_DA_CARTEIRA_AQUI",
+  "ticker": "MXRF11",
+  "tipo": "COMPRA",
+  "quantidade": 50,
+  "preco": 10.20
+}
+
+### Listar transações de uma carteira
+GET {{baseUrl}}/transactions?walletId=COLE_O_ID_DA_CARTEIRA_AQUI
+Authorization: Bearer {{accessToken}}
+
+### ------------------------------------------------------------------
+### ATIVOS, DIVIDENDOS E ATLAS SCORE
+### ------------------------------------------------------------------
+
+GET {{baseUrl}}/assets
+
+### 
+GET {{baseUrl}}/assets/search?q=PETR
+
+###
+GET {{baseUrl}}/assets/PETR4
+
+###
+GET {{baseUrl}}/assets/PETR4/dividends
+
+###
+GET {{baseUrl}}/atlas-score/PETR4
+
+### ------------------------------------------------------------------
+### IA
+### ------------------------------------------------------------------
+
+### Nova conversa
+POST {{baseUrl}}/ai/chat
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "mensagem": "O que é o Atlas Score?" }
+
+### Histórico de conversas
+GET {{baseUrl}}/ai/history
+Authorization: Bearer {{accessToken}}
+
+### ------------------------------------------------------------------
+### NOTÍCIAS, NOTIFICAÇÕES E ALERTAS
+### ------------------------------------------------------------------
+
+GET {{baseUrl}}/news
+
+###
+GET {{baseUrl}}/notifications
+Authorization: Bearer {{accessToken}}
+
+###
+POST {{baseUrl}}/alerts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "ticker": "PETR4",
+  "tipo": "PRECO_ALVO",
+  "condicao": { "acima_de": 35.0 }
+}
+
+### ------------------------------------------------------------------
+### PREMIUM / ASSINATURAS
+### ------------------------------------------------------------------
+
+GET {{baseUrl}}/subscriptions
+Authorization: Bearer {{accessToken}}
+
+###
+POST {{baseUrl}}/subscriptions/start-trial
+Authorization: Bearer {{accessToken}}
+
+### ------------------------------------------------------------------
+### ADMINISTRAÇÃO (login separado do usuário comum)
+### ------------------------------------------------------------------
+
+# @name adminLogin
+POST {{baseUrl}}/admin/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{adminEmail}}",
+  "senha": "{{adminSenha}}"
+}
+
+### Guarde o accessToken do admin aqui
+@adminAccessToken = COLE_O_ACCESS_TOKEN_ADMIN_AQUI
+
+###
+GET {{baseUrl}}/admin/dashboard
+Authorization: Bearer {{adminAccessToken}}
+
+###
+GET {{baseUrl}}/admin/users
+Authorization: Bearer {{adminAccessToken}}
+
+###
+GET {{baseUrl}}/admin/metrics
+Authorization: Bearer {{adminAccessToken}}
